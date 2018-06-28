@@ -113,6 +113,13 @@ windows in a 3Ds Max scene. =
 		global WindowConstraint = #()
 		global TapeCount = 0
 		
+		fn roundTo v t: 100 = (	
+			v = v as float
+			t = t as float
+			v = (ceil (v * t)) as integer
+			return  v / t 
+		)
+		
 		fn initPlacer =
 		(
 			Obj = #()
@@ -371,6 +378,9 @@ windows in a 3Ds Max scene. =
 										
 					sx = ((iWidth - w) / w) + 1.0
 					sz = ((iHeight - h) / h) + 1.0
+					
+					sx = roundTo sx t: 10000
+					sz = roundTo sz t: 10000
 
 					scale s [sx, 1, sz]
 					
