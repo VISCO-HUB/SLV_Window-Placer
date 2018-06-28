@@ -2,7 +2,7 @@
 [INFO] 
 
 NAME = Window Placer
-VERSION = 1.0.3
+VERSION = 1.1.0
 AUTHOR = Vasiliy Lukyanenko
 DEV = VISCO
 HELP = help\windowPlacer.html
@@ -12,7 +12,7 @@ HELP = help\windowPlacer.html
 * First release =
 
 [1.0.1]
-
+   
 - Small bug fixes =
 
 [1.0.2]
@@ -22,6 +22,10 @@ HELP = help\windowPlacer.html
 [1.0.3]
 
 * Added load default windows template feature=
+
+[1.1.0]
+
+* Added: Support for UE (scale window mode)=
 
 [ABOUT]
 
@@ -82,6 +86,10 @@ windows in a 3Ds Max scene. =
 		checkbutton btnPlace "Place " enabled: true width: 190 height: 40 
 		button btnAutoPlace "Create From Border " enabled: true width: 190 height: 40 
 		
+		group "Mode" (
+			radiobuttons rdoPlaceType "" labels: #("Vertex Move", "Scale") default: 2
+		)
+		
 		group "Tip"
 		(
 			label lblTip "When use \"Place\" mode create window\nfrom top left corner to bottom right\ncorner." align: #left height: 45 offset: [0, 0]
@@ -126,8 +134,8 @@ windows in a 3Ds Max scene. =
 				try(a = (getUserProp o p) as float) catch()
 				return a
 			)
-					
-			for i in geometry where classOf i == Editable_Poly and ((getUserProp i "wind_r") != undefined)  do
+				
+			for i in geometry where classOf i == Editable_Poly and ((getUserProp i "place_type") == rdoPlaceType.state)  do
 			(
 				append Obj i
 
@@ -320,6 +328,65 @@ windows in a 3Ds Max scene. =
 			)
 		)
 		
+		fn placeWindowScale = (
+			undo off
+			(
+				fn tapeCallback o =
+				(
+					TapeCount += 1
+					if(TapeCount > 2) do stopCreating()
+				)
+					
+				n = startObjectCreation Tape returnNewNodes: true newNodeCallback: tapeCallback			
+			)
+			
+			btnPlace.checked = false
+			
+			undo off
+			(
+				if(classOf n[2] == Targetobject) then
+				(
+					btnPlace.checked = true
+					
+					i = lbxList.selection					
+					w = WindowConstraint[i][5]
+					h = WindowConstraint[i][6]
+					
+					---!!!!!
+					try(s = instance Obj[i]) 
+					catch
+					(
+						messageWindow "Object not exist!"
+						return false
+					)
+					
+					w0 = abs(n[1].pos.z - n[2].pos.z)
+					w1 = (distance n[1] n[2]) 
+							
+					iWidth = (sqrt(w1^2 - w0^2)) as float
+					
+					iHeight = w0 as float
+										
+					s.pos = n[1].pos - ((n[1].pos - n[1].target.pos) / 2.0)
+										
+					sx = ((iWidth - w) / w) + 1.0
+					sz = ((iHeight - h) / h) + 1.0
+
+					scale s [sx, 1, sz]
+					
+					rotZ = (n[1].transform.rotationpart as EulerAngles).z + 90
+					rotate s (EulerAngles 0 0 rotZ)	
+										
+					try(delete n) catch()										
+				)
+			)
+			
+			TapeCount = 0
+			try(select s) catch()
+			
+			if(btnPlace.checked) do placeWindowScale()
+		)
+		
 		fn placeWindow =
 		(
 			undo off
@@ -387,8 +454,12 @@ windows in a 3Ds Max scene. =
 			
 			if(btnPlace.checked) do placeWindow()
 		)
-		
-		
+			
+		on rdoPlaceType changed v do (
+			initPlacer()
+			
+			btnAutoPlace.enabled = v != 2
+		)
 		
 		on _rPlacerRollout open do
 		(		
@@ -420,16 +491,24 @@ windows in a 3Ds Max scene. =
 			
 			stopCreating()
 			
-			if(x == true and i > 0) then
-			(							
-				wr = WindowConstraint[i][1]
-				wl = WindowConstraint[i][2]
-				
-				if(wr != "" and wl != "") do placeWindow()			
-			)
-			else
-			(
+			if(x != true or i == 0) do (
 				btnPlace.checked = false
+				return false
+			)
+			
+			case rdoPlaceType.state of (
+				1: (				
+					wr = WindowConstraint[i][1]
+					wl = WindowConstraint[i][2]
+						
+					if(wr != "" and wl != "") do placeWindow()								
+				)
+				2: (
+					ww = WindowConstraint[i][5]
+					wh = WindowConstraint[i][6]
+					
+					if(ww != "" and wh != "") do placeWindowScale()	
+				)
 			)
 		)
 		
@@ -450,6 +529,10 @@ windows in a 3Ds Max scene. =
 
 	rollout _rWindowSettings "Window Setup" 
 	(
+		group "Setup Window Type" (
+			radiobuttons rdoPlaceType "" labels: #("Vertex Move", "Scale") default: 2
+		)
+		
 		group "STEP 1:Transform"
 		(
 			button btnResetXForm "Reset XForm"
@@ -479,7 +562,19 @@ windows in a 3Ds Max scene. =
 		(
 			label lblTip "Don't forget: Build tape always from\ntop left corner and finish\nin right bottom corner!" align: #left height: 70 offset: [0, 0]
 		)	
-			
+		
+		fn toggleInterface = (			
+			v = rdoPlaceType.state
+			btnResetXForm.enabled = true
+			btnSetPivot.enabled = true
+			btnAddDim.enabled = true
+			btnAddLeftVert.enabled = v != 2
+			btnAddRightVert.enabled = v != 2
+			btnAddTopVert.enabled = v != 2
+			btnAddBottomVert.enabled = v != 2
+			btnAddLeftFloat.enabled = v != 2
+			btnAddRightFloat.enabled = v != 2			
+		)
 		
 		fn doResetXForm =
 		(
@@ -525,7 +620,7 @@ windows in a 3Ds Max scene. =
 						try(delete t) catch()
 						select s
 						TapeCount = 0
-						
+						setUserProp s "place_type" rdoPlaceType.state
 						messageWindow ("Center setup: X: " + abs(d[1]) as string + " Y: " + abs(d[3]) as string)
 					)
 				)
@@ -550,6 +645,7 @@ windows in a 3Ds Max scene. =
 				z = ""
 				for i in a do z += i as string + ","
 				setUserProp $ n (z as string)		
+				setUserProp $ "place_type" rdoPlaceType.state
 				messageWindow ("Added " + a.count as string + " points!")									
 			)
 			catch
@@ -592,6 +688,8 @@ windows in a 3Ds Max scene. =
 					
 						setUserProp s "wind_h" iHeight
 						setUserProp s "wind_w" iWidth
+						
+						setUserProp s "place_type" rdoPlaceType.state
 										
 						try(delete t) catch()
 						select s
@@ -606,6 +704,11 @@ windows in a 3Ds Max scene. =
 			
 			_rPlacerRollout.initPlacer()
 		)
+		
+		on _rWindowSettings open do (
+			toggleInterface()
+		)
+		
 		on btnResetXForm pressed do doResetXForm()
 		on btnAddRightVert pressed do setUserPropVert "wind_r"
 		on btnAddLeftVert pressed do setUserPropVert "wind_l"
@@ -618,6 +721,10 @@ windows in a 3Ds Max scene. =
 		on btnAddLeftFloat pressed do setUserPropVert "wind_f_l"	
 			
 		on btnSetPivot pressed do setTransform()
+		
+		on rdoPlaceType changed v do (
+			toggleInterface()			
+		)
 	)
 
 
@@ -656,7 +763,7 @@ windows in a 3Ds Max scene. =
 	)
 
 	try(closeRolloutFloater rWindowPlacer) catch()
-	global rWindowPlacer = newRolloutFloater "Window Placer" 230 600
+	global rWindowPlacer = newRolloutFloater "Window Placer" 230 800
 
 	addRollout _rPlacerRollout rWindowPlacer rolledUp:false 
 	addRollout _rWindowSettings rWindowPlacer rolledUp:true 
