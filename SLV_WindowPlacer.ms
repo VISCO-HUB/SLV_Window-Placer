@@ -2,7 +2,7 @@
 [INFO] 
 
 NAME = Window Placer
-VERSION = 1.1.0
+VERSION = 1.1.1
 AUTHOR = Vasiliy Lukyanenko
 DEV = VISCO
 HELP = help\windowPlacer.html
